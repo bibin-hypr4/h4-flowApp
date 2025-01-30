@@ -238,6 +238,9 @@ func loadIcon(path string) []byte {
 }
 
 func isSameDay() bool {
+	if checkinTime.IsZero() {
+		checkinTime = time.Now()
+	}
 	return checkinTime.Day() == time.Now().Day()
 }
 
@@ -269,6 +272,12 @@ func GetMachineID() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("error getting machine ID on Windows: %v", err)
 		}
+	case "darwin":
+		// For macOS, use the machineid package
+		id, err = machineid.ID()
+		if err != nil {
+			return "", fmt.Errorf("error getting machine ID on macOS: %v", err)
+		}
 	default:
 		return "", fmt.Errorf("unsupported OS: %v", runtime.GOOS)
 	}
@@ -286,33 +295,32 @@ func handleSignals() {
 	}()
 }
 
-func showVersionMismatch(version string, app fyne.App) {
+func showAppError(message string, app fyne.App) {
 	window := app.NewWindow("H4 Flow App")
 	window.Resize(fyne.NewSize(400, 300)) // Set a default size for the window
-	window.Show()                         // Ensure the window is shown
+	window.CenterOnScreen()
+	window.Show() // Ensure the window is shown
 
 	// Show version mismatch dialog
-	dialog := dialog.NewConfirm(
+	dialog := dialog.NewInformation(
 		"Version Mismatch",
-		fmt.Sprintf("Invalid version detected. Current version: %s. Please update the app.", version),
-		func(ok bool) {
-			if ok {
-				// If user clicks "OK", quit the app
-				app.Quit() // This will close the app
-			} else {
-				// If user clicks "Cancel", just close the dialog
-				// The app will continue running
-			}
-		},
+		message,
+
 		window,
 	)
-
+	dialog.SetOnClosed(func() {
+		window.Close() // Close the window when the dialog is closed
+		app.Quit()
+		log.Fatalf("")
+		// Quit the application
+	})
 	// Ensure dialog blocks app execution until user responds
 	dialog.Show()
 
 	// Wait for dialog to be closed, don't proceed further until user clicks OK or Cancel
-	app.Run()
-	return
+	// app.Run()
+	// app.Quit()
+	// return
 
 }
 func getPublicIP() (string, error) {
@@ -441,4 +449,62 @@ func isLatestApp() bool {
 		return false
 	}
 	return true
+}
+func ShowError(version string, app fyne.App) {
+	window := app.NewWindow("H4 Flow App")
+	window.Resize(fyne.NewSize(400, 300)) // Set a default size for the window
+	window.CenterOnScreen()
+	window.Show() // Ensure the window is shown
+
+	// Show version mismatch dialog
+	dialog := dialog.NewInformation(
+		"Version Mismatch",
+		fmt.Sprintf("Invalid version detected. Current version: %s. Please update the app.", version),
+
+		window,
+	)
+	dialog.SetOnClosed(func() {
+		window.Close() // Close the window when the dialog is closed
+		app.Quit()     // Quit the application
+	})
+
+	// Ensure dialog blocks app execution until user responds
+	dialog.Show()
+
+	// Wait for dialog to be closed, don't proceed further until user clicks OK or Cancel
+	app.Run()
+	app.Quit()
+	return
+
+}
+
+// getAppDataDir returns a secure directory for storing application data
+func getAppDataDir() string {
+	var baseDir string
+
+	if runtime.GOOS == "windows" {
+		// Windows: Use %APPDATA%\yourapp\data
+		appData := os.Getenv("APPDATA")
+		if appData != "" {
+			baseDir = filepath.Join(appData, "flow-app", "data")
+		} else {
+			// Fallback to local directory if APPDATA is not set
+			baseDir = filepath.Join(".", "data")
+		}
+	} else {
+		// Linux/macOS: Use ~/.yourapp/data
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			baseDir = filepath.Join(homeDir, "flow-app", "data")
+		} else {
+			// Fallback to local directory if home dir cannot be found
+			baseDir = filepath.Join(".", "data")
+		}
+	}
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+
+	return baseDir
 }

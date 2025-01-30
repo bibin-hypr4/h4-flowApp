@@ -35,6 +35,7 @@ var dailyIdleTime time.Duration
 var processTimes = make(map[int]time.Duration) // Map to store time spent per process
 var processLastSeen = make(map[int]time.Time)
 var USER_IP string
+var FyneAPP fyne.App
 
 var (
 	IDLE_URL       = "https://h4api.muxly.app/api/attendance/v4/record/idle"
@@ -46,14 +47,13 @@ var (
 	VERSION        = "1.3.2"
 )
 
-func Init() {
+func Init(app fyne.App) {
 	USER_IP, _ = getPublicIP()
 	id, err := GetMachineID()
 	if err != nil {
 		log.Fatalf("Error getting machine ID: %v", err)
 	}
 	machineID = id
-
 	//fetch users details
 	userDetails, err := getUserDetails(machineID)
 	if err != nil {
@@ -66,9 +66,10 @@ func Init() {
 			return
 		}
 		res, err := AddUser(machineID, email, employeId)
+
 		if err != nil {
 			log.Println("err", err, res)
-			handleCrash("failed to add user")
+			showAppError("Failed to verify User.Please contact Administrator", app)
 		}
 		userEmail = email
 	} else {
@@ -77,6 +78,9 @@ func Init() {
 }
 
 func main() {
+	app := app.NewWithID("h4-Flow App")
+	FyneAPP = app
+	fmt.Println("started")
 	defer func() {
 		if r := recover(); r != nil {
 			log.Print("crashed")
@@ -87,11 +91,10 @@ func main() {
 		}
 	}()
 
-	Init()
+	Init(app)
 
 	// Handle system signals for graceful shutdown
 	handleSignals()
-	app := app.NewWithID("h4-Flow App")
 	res, err := FetchConfigDetails(CONFIG_URL)
 	if err != nil {
 		log.Fatalf("failed to fetch config details")
@@ -101,7 +104,7 @@ func main() {
 		version = VERSION
 	}
 	if version != VERSION {
-		showVersionMismatch(VERSION, app)
+		showAppError(" Please update the App to latest version", app)
 	}
 
 	processTimeInverval = 15 * time.Minute
@@ -120,6 +123,9 @@ func initializeApp(a fyne.App) {
 	idleIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/idle.ico")
 	activeIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/active.ico")
 
+	// idleIcon := fyne.NewStaticResource("idle.ico", idleImageData)
+	// activeIcon := fyne.NewStaticResource("active.ico", activeImageData)
+
 	// Set the initial status text for the check-in
 	userName := currentUsername()
 
@@ -127,20 +133,23 @@ func initializeApp(a fyne.App) {
 	var ok bool
 	if desk, ok = a.(desktop.App); ok {
 		mItemCheckin = fyne.NewMenuItem("Check In", func() {
-			if !checkedIn {
-				if !isLatestApp() {
-					mItemCheckin.Label = "Version Mismatch Update App"
+			if !isNetworkAvailable() {
+				if checkedIn {
+					mItemCheckin.Label = "Check In - network error"
 
-					menItems = fyne.NewMenu("H4 - Flow", mUser, mAbout, mItemCheckin)
-					desk.SetSystemTrayMenu(menItems)
-					return
+				} else {
+					mItemCheckin.Label = "Check In - network error"
+
 				}
+				return
 			}
 			checkActivity()
 			if checkedIn {
+
 				desk.SetSystemTrayIcon(activeIcon)
 
 			} else {
+
 				mItemCheckin.Label = "Check In"
 
 				desk.SetSystemTrayIcon(idleIcon)
@@ -223,7 +232,9 @@ func checkActivity() {
 		if !isSameDay() {
 			dailyIdleTime = 0
 			workingTime = 0
-
+			if !isLatestApp() {
+				showAppError("This version of app is outdated", FyneAPP)
+			}
 		}
 		go func() {
 			getIdleTime()
@@ -235,6 +246,7 @@ func checkActivity() {
 		recordAttendance("attendance", "checked_in", machineID, checkinTime, checkoutTime, workingTime, dailyIdleTime)
 		sessionStart = time.Now()
 		sessionEnd = time.Time{}
+
 	} else {
 		checkedIn = false
 		mItemCheckin.Label = "Check In"
@@ -380,8 +392,7 @@ func processList() interface{} {
 			delete(processLastSeen, pid)
 		}
 	}
-	writeParquetFile("process.parquet", data)
-	// go sendProcess(data)
+	go sendProcess(data)
 	return data
 }
 func CaptureScreenshots() ([]string, error) {

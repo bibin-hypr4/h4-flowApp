@@ -70,12 +70,12 @@ func recordIdleTime(idleEndTime, idleStartTime time.Time) {
 		},
 	}
 	go func() {
-		err := sendPostRequest(recordDetails, "idle")
-		if err != nil {
-			writeParquetFile("idle.parquet", recordDetails)
+		sendPostRequest(recordDetails, "idle")
+		// if err != nil {
+		// 	writeParquetFile("idle.parquet", recordDetails)
 
-			fmt.Printf("Error sending attendance record: %v\n", err)
-		}
+		// 	fmt.Printf("Error sending attendance record: %v\n", err)
+		// }
 	}()
 }
 
@@ -94,41 +94,38 @@ func recordAttendance(recordType string, status, machineID string, checkinTime, 
 		Date:         time.Now().Format("2006-01-02"),
 		IP:           USER_IP,
 	}}
-	fmt.Println("status", status)
-	if status == "checked_in" && isNetworkAvailable() {
-		flushAttendanceRecords("idle.parquet")
-		flushIdleRecords("attendance.go")
-		flushAttendanceRecords("attendance.go")
+	// if status == "checked_in" && isNetworkAvailable() {
+	// 	go flushAttendanceRecords("attendance.parquet")
 
-	}
+	// }
 
 	go func(stats string) {
-		err := sendPostRequest(recordDetails, "attendance")
-		if err != nil {
-			writeParquetFile("attendance.parquet", recordDetails)
-			fmt.Printf("Error sending attendance record: %v\n", err)
-		}
+		sendPostRequest(recordDetails, "attendance")
+		// if err != nil {
+		// 	writeParquetFile("attendance.parquet", recordDetails)
+		// 	fmt.Printf("Error sending attendance record: %v\n", err)
+		// }
 	}(status)
 }
 func handleCrash(r interface{}) {
-	fmt.Println("close detected", r)
-	if checkedIn {
-		parquetData := []AttendanceRecord{{
-			Type:         "attendance-forcequit",
-			Status:       "checked_out",
-			Email:        userEmail,
-			MachineID:    machineID,
-			RecordTime:   time.Now().String(),
-			CheckinTime:  checkinTime.String(),
-			CheckoutTime: checkoutTime.String(),
-			WorkingTime:  workingTime.Hours(),
-			IdleTime:     dailyIdleTime.Hours(),
-			WorktimeMin:  workingTime.Minutes(),
-			Date:         time.Now().Format("2006-01-02"),
-			IP:           USER_IP,
-		}}
-		writeParquetFile("attendance.parquet", parquetData)
-	}
+	// fmt.Println("close detected", r)
+	// if checkedIn {
+	// 	parquetData := []AttendanceRecord{{
+	// 		Type:         "attendance-forcequit",
+	// 		Status:       "checked_out",
+	// 		Email:        userEmail,
+	// 		MachineID:    machineID,
+	// 		RecordTime:   time.Now().String(),
+	// 		CheckinTime:  checkinTime.String(),
+	// 		CheckoutTime: checkoutTime.String(),
+	// 		WorkingTime:  workingTime.Hours(),
+	// 		IdleTime:     dailyIdleTime.Hours(),
+	// 		WorktimeMin:  workingTime.Minutes(),
+	// 		Date:         time.Now().Format("2006-01-02"),
+	// 		IP:           USER_IP,
+	// 	}}
+	// 	writeParquetFile("attendance.parquet", parquetData)
+	// }
 	systray.Quit()
 	log.Fatal("force quit or crash detected")
 }
@@ -325,7 +322,7 @@ func AddUser(machineID string, email string, employeeId string) (map[string]inte
 
 	return responseMap, nil
 }
-func sendProcess(data []map[string]interface{}) error {
+func sendProcess(data interface{}) error {
 	apiURL := PROCESS_URL
 	if apiURL == "" {
 		return fmt.Errorf("API_URL environment variable not set")

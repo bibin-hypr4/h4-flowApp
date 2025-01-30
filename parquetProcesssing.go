@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sync"
 
 	"github.com/xitongsys/parquet-go-source/local"
@@ -56,6 +57,7 @@ type ProcessInfo struct {
 }
 
 func writeParquetFile[T any](filename string, records []T) {
+	filename = filepath.Join(getAppDataDir(), filename)
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 	// Open the Parquet file for reading (if it exists)
@@ -147,46 +149,72 @@ func flushIdleRecords(filename string) ([]interface{}, error) {
 	}
 	return result, nil
 }
+
 func flushAttendanceRecords(filename string) ([]interface{}, error) {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
+
+	filename = filepath.Join(getAppDataDir(), filename)
+	log.Printf("Attempting to open Parquet file: %s\n", filename)
+
 	// Open the Parquet file for reading
 	fr, err := local.NewLocalFileReader(filename)
 	if err != nil {
+		log.Printf("Error opening file %s: %v\n", filename, err)
 		return nil, fmt.Errorf("failed to open file: %v", err)
 	}
 	defer fr.Close()
+	log.Println("Successfully opened Parquet file.")
 
 	// Create a Parquet reader
 	pr, err := reader.NewParquetReader(fr, new(AttendanceRecord), 4)
 	if err != nil {
+		log.Printf("Failed to create Parquet reader for %s: %v\n", filename, err)
 		return nil, fmt.Errorf("failed to create Parquet reader: %v", err)
 	}
 	defer pr.ReadStop()
+	log.Println("Successfully created Parquet reader.")
 
 	// Read data from the Parquet file
 	numRows := int(pr.GetNumRows())
+	log.Printf("Number of rows in %s: %d\n", filename, numRows)
+
 	records := make([]AttendanceRecord, numRows)
 	if err = pr.Read(&records); err != nil {
+		log.Printf("Error reading records from %s: %v\n", filename, err)
 		return nil, fmt.Errorf("read error: %v", err)
 	}
+	log.Println("Successfully read all records.")
 
-	// Initialize a slice of maps to store the data
+	// Convert records to JSON format
 	var result []interface{}
 	jsonData, err := json.Marshal(records)
 	if err != nil {
+		log.Printf("Failed to marshal records to JSON: %v\n", err)
 		return nil, fmt.Errorf("failed to marshal record: %v", err)
 	}
+
 	if err := json.Unmarshal(jsonData, &result); err != nil {
+		log.Printf("Failed to unmarshal JSON: %v\n", err)
 		return nil, fmt.Errorf("failed to unmarshal record: %v", err)
 	}
-	err = sendPostRequest(result, "idle")
-	if err == nil {
-		clearParquetFile("attendance.parquet")
+	log.Println("Successfully converted records to JSON format.")
+
+	// Send data via POST request
+	err = sendPostRequest(result, "attendance")
+	if err != nil {
+		log.Printf("Failed to send POST request: %v\n", err)
+	} else {
+		log.Println("Successfully sent data via POST request.")
 	}
+
+	// Clear the Parquet file after sending data
 	clearParquetFile(filename)
+	log.Printf("Cleared Parquet file: %s\n", filename)
+
 	return result, nil
 }
+
 func flushProcessRecords(filename string) ([]map[string]interface{}, error) {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()

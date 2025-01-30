@@ -1,0 +1,8 @@
+Package: flow-app
+Version: 1.3.2
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Hypr4
+Description: hypr4 attendance tracking app
+Depends: libgdk-pixbuf2.0-0, libayatana-appindicator3-1, libc6,sudo

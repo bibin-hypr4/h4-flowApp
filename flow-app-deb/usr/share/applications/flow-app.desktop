@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0.3
+Type=Application
+Name=flow-app
+Exec=/usr/local/bin/flow-app
+Icon=/usr/share/icons/hicolor/256x256/apps/track.png
+Terminal=false
+Categories=Utility;
