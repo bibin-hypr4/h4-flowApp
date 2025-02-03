@@ -48,6 +48,7 @@ var (
 )
 
 func Init(app fyne.App) {
+	initializeDB()
 	USER_IP, _ = getPublicIP()
 	id, err := GetMachineID()
 	if err != nil {
@@ -366,8 +367,8 @@ func processList() interface{} {
 
 		row := ProcessInfo{
 			PID:       fmt.Sprintf("%d", pid),
-			NAME:      name,
-			USER:      user,
+			Name:      name,
+			User:      user,
 			CPU:       fmt.Sprintf("%2.2f%%", cpu),
 			Email:     userEmail,
 			Type:      "process",

@@ -80,8 +80,8 @@ func recordIdleTime(idleEndTime, idleStartTime time.Time) {
 }
 
 func recordAttendance(recordType string, status, machineID string, checkinTime, checkoutTime time.Time, workingTime, dailyIdleTime time.Duration) {
-	recordDetails := []AttendanceRecord{{
-		Type:         "attendance",
+	recordDetails := AttendanceRecord{
+		Type:         recordType,
 		Status:       status,
 		Email:        userEmail,
 		MachineID:    machineID,
@@ -93,39 +93,46 @@ func recordAttendance(recordType string, status, machineID string, checkinTime, 
 		IdleTime:     dailyIdleTime.Minutes(),
 		Date:         time.Now().Format("2006-01-02"),
 		IP:           USER_IP,
-	}}
+	}
+	insertAttendanceRecord(recordDetails)
+	res, _ := getAttendanceRecords()
+	fmt.Println(len(res))
+	// attendanceRecordsArray := []AttendanceRecord{recordDetails}
 	// if status == "checked_in" && isNetworkAvailable() {
-	// 	go flushAttendanceRecords("attendance.parquet")
+	// 	res, err := getAttendanceRecords()
+	// 	if err != nil {
+	// 		sendPostRequest(res, "attendance")
+	// 	}
 
 	// }
 
-	go func(stats string) {
-		sendPostRequest(recordDetails, "attendance")
-		// if err != nil {
-		// 	writeParquetFile("attendance.parquet", recordDetails)
-		// 	fmt.Printf("Error sending attendance record: %v\n", err)
-		// }
-	}(status)
+	// go func(stats string) {
+	// 	err := sendPostRequest(attendanceRecordsArray, "attendance")
+	// 	if err != nil {
+	// 		insertAttendanceRecord(recordDetails)
+	// 		fmt.Printf("Error sending attendance record: %v\n", err)
+	// 	}
+	// }(status)
 }
 func handleCrash(r interface{}) {
-	// fmt.Println("close detected", r)
-	// if checkedIn {
-	// 	parquetData := []AttendanceRecord{{
-	// 		Type:         "attendance-forcequit",
-	// 		Status:       "checked_out",
-	// 		Email:        userEmail,
-	// 		MachineID:    machineID,
-	// 		RecordTime:   time.Now().String(),
-	// 		CheckinTime:  checkinTime.String(),
-	// 		CheckoutTime: checkoutTime.String(),
-	// 		WorkingTime:  workingTime.Hours(),
-	// 		IdleTime:     dailyIdleTime.Hours(),
-	// 		WorktimeMin:  workingTime.Minutes(),
-	// 		Date:         time.Now().Format("2006-01-02"),
-	// 		IP:           USER_IP,
-	// 	}}
-	// 	writeParquetFile("attendance.parquet", parquetData)
-	// }
+	fmt.Println("close detected", r)
+	if checkedIn {
+		data := AttendanceRecord{
+			Type:         "attendance-forcequit",
+			Status:       "checked_out",
+			Email:        userEmail,
+			MachineID:    machineID,
+			RecordTime:   time.Now().String(),
+			CheckinTime:  checkinTime.String(),
+			CheckoutTime: checkoutTime.String(),
+			WorkingTime:  workingTime.Hours(),
+			IdleTime:     dailyIdleTime.Hours(),
+			WorktimeMin:  workingTime.Minutes(),
+			Date:         time.Now().Format("2006-01-02"),
+			IP:           USER_IP,
+		}
+		insertAttendanceRecord(data)
+	}
 	systray.Quit()
 	log.Fatal("force quit or crash detected")
 }
