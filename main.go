@@ -13,7 +13,6 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/driver/desktop"
 	"github.com/go-vgo/robotgo"
-	"github.com/google/uuid"
 	"github.com/kbinani/screenshot"
 	"github.com/shirou/gopsutil/process"
 )
@@ -35,20 +34,23 @@ var dailyIdleTime time.Duration
 var processTimes = make(map[int]time.Duration) // Map to store time spent per process
 var processLastSeen = make(map[int]time.Time)
 var USER_IP string
+var IdleIcon fyne.Resource
 var FyneAPP fyne.App
 
 var (
-	IDLE_URL       = "https://h4api.muxly.app/api/attendance/v4/record/idle"
-	ATTENDANCE_URL = "https://h4api.muxly.app/api/attendance/v4/record/add"
-	PROCESS_URL    = "https://h4api.muxly.app/api/attendance/v4/record/process"
-	GETUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/get"
-	ADDUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/register"
-	CONFIG_URL     = "https://h4api.muxly.app/api/attendance/v4/config"
-	VERSION        = "1.3.2"
+	IDLE_URL       = "http://localhost:4021/api/attendance/v4/record/idle"
+	ATTENDANCE_URL = "http://localhost:4021/api/attendance/v4/record/add"
+	PROCESS_URL    = "http://localhost:4021/api/attendance/v4/record/process"
+	GETUSER_URL    = "http://localhost:4021/api/attendance/v4/user/get"
+	ADDUSER_URL    = "http://localhost:4021/api/attendance/v4/user/register"
+	CONFIG_URL     = "http://localhost:4021/api/attendance/v4/config"
+	UPLOAD_URL     = "http://localhost:4021/api/attendance/v4/upload"
+	VERSION        = "1.3.3"
 )
 
 func Init(app fyne.App) {
-	initializeDB()
+	go monitorSleepLinux()
+	logFile = getAppDataDir() + "/attendance.log"
 	USER_IP, _ = getPublicIP()
 	id, err := GetMachineID()
 	if err != nil {
@@ -79,6 +81,7 @@ func Init(app fyne.App) {
 }
 
 func main() {
+
 	app := app.NewWithID("h4-Flow App")
 	FyneAPP = app
 	fmt.Println("started")
@@ -107,9 +110,8 @@ func main() {
 	if version != VERSION {
 		showAppError(" Please update the App to latest version", app)
 	}
-
 	processTimeInverval = 15 * time.Minute
-	idleThreshold = 15 * time.Minute
+	idleThreshold = 2 * time.Minute
 	initializeApp(app)
 
 }
@@ -123,7 +125,7 @@ func initializeApp(a fyne.App) {
 	// Load the idle icon for the tray
 	idleIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/idle.ico")
 	activeIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/active.ico")
-
+	IdleIcon = idleIcon
 	// idleIcon := fyne.NewStaticResource("idle.ico", idleImageData)
 	// activeIcon := fyne.NewStaticResource("active.ico", activeImageData)
 
@@ -246,6 +248,8 @@ func checkActivity() {
 		updateCheckinTime()
 		recordAttendance("attendance", "checked_in", machineID, checkinTime, checkoutTime, workingTime, dailyIdleTime)
 		sessionStart = time.Now()
+		recordAttendance("session", "checked_in", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
+
 		sessionEnd = time.Time{}
 
 	} else {
@@ -254,7 +258,7 @@ func checkActivity() {
 		mItemCheckin.Checked = false
 		updateCheckoutTime()
 		recordAttendance("attendance", "checked_out", machineID, checkinTime, checkoutTime, workingTime, dailyIdleTime)
-		recordAttendance("session", "check_out", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
+		recordAttendance("session", "checked_out", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
 		sessionStart = time.Time{}
 		sessionEnd = time.Time{}
 	}
@@ -282,6 +286,8 @@ func getIdleTime() {
 				idleStartTime = time.Time{}
 				if idleStatus && time.Since(idleStartTime) >= idleThreshold {
 					sessionStart = time.Now()
+					recordAttendance("session", "checked_in", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
+
 					idleStatus = false
 				}
 			}
@@ -297,14 +303,15 @@ func getIdleTime() {
 			idleStatus = true
 			// fmt.Println("idle started", sessionStart, sessionEnd)
 			// // recordSession()
-			recordAttendance("session", "check_out", machineID, sessionStart, sessionEnd, sessionTime, dailyIdleTime)
+			recordAttendance("session", "checked_out", machineID, sessionStart, sessionEnd, sessionTime, dailyIdleTime)
 			sessionStart = time.Time{}
 			sessionEnd = time.Time{}
 			idleStartTime = lastActive
 		} else if time.Since(lastActive) <= idleThreshold && !idleStartTime.IsZero() {
-			if !sessionStart.IsZero() {
-				fmt.Println("hiiii")
+			if sessionStart.IsZero() {
 				sessionStart = time.Now()
+				recordAttendance("session", "checked_in", machineID, sessionStart, time.Time{}, sessionTime, dailyIdleTime)
+
 			}
 			idleEndTime := time.Now()
 			dailyIdleTime += time.Since(idleStartTime) - idleThreshold
@@ -369,7 +376,7 @@ func processList() interface{} {
 			PID:       fmt.Sprintf("%d", pid),
 			Name:      name,
 			User:      user,
-			CPU:       fmt.Sprintf("%2.2f%%", cpu),
+			Cpu:       fmt.Sprintf("%2.2f%%", cpu),
 			Email:     userEmail,
 			Type:      "process",
 			Date:      now.Format("2006-01-02"),
@@ -418,8 +425,8 @@ func CaptureScreenshots() ([]string, error) {
 			continue
 		}
 
-		// Generate a unique file name for each display
-		fileName := fmt.Sprintf("screenshot_display_%d_%s.png", i, uuid.New().String())
+		timestamp := time.Now().Format("20060102_150405")
+		fileName := fmt.Sprintf("screenshot_display_%d_%s.png", i, timestamp)
 		filePath := filepath.Join(dirPath, fileName)
 
 		// Save the screenshot as a PNG file

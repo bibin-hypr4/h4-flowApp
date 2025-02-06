@@ -26,6 +26,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/MarinX/keylogger"
 	"github.com/denisbrodbeck/machineid"
+	"github.com/godbus/dbus/v5"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/host"
 )
@@ -61,9 +62,9 @@ func getUserInput() (string, string, error) {
 			}
 
 			// Validate employee ID
-			employeeIDRegex := regexp.MustCompile(`^E\d{4}$`)
+			employeeIDRegex := regexp.MustCompile(`^[A-Z]\d{4}$`)
 			if !employeeIDRegex.MatchString(employeeID) {
-				dialog.ShowError(fmt.Errorf("invalid employee ID format. It must start with 'E' followed by 4 digits"), w)
+				dialog.ShowError(fmt.Errorf("invalid employee ID format. It must start with Capital letter followed by 4 digits"), w)
 				return
 			}
 
@@ -337,7 +338,7 @@ func getPublicIP() (string, error) {
 
 	return string(ip), nil
 }
-func UploadAllScreenshots(uploadURL string) ([]string, error) {
+func UploadAllScreenshots() ([]string, error) {
 	// Get the screenshots directory path
 	dirPath := "screenshots"
 
@@ -358,7 +359,7 @@ func UploadAllScreenshots(uploadURL string) ([]string, error) {
 		filePath := filepath.Join(dirPath, file.Name())
 
 		// Upload the screenshot
-		err := UploadScreenshot(filePath, uploadURL)
+		err := UploadScreenshot(filePath, UPLOAD_URL)
 		if err != nil {
 			log.Printf("Failed to upload file %s: %v", filePath, err)
 			continue
@@ -384,44 +385,45 @@ func UploadAllScreenshots(uploadURL string) ([]string, error) {
 	return uploadedFiles, nil
 }
 func UploadScreenshot(filePath, uploadURL string) error {
-	// Open the screenshot file
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to open file %s: %v", filePath, err)
 	}
 	defer file.Close()
 
-	// Create a buffer to hold the multipart form data
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
 
-	// Create the file part of the form data
+	// Create file part
 	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
 	if err != nil {
 		return fmt.Errorf("failed to create form file for %s: %v", filePath, err)
 	}
 
-	// Copy the file content into the form part
 	if _, err := io.Copy(part, file); err != nil {
 		return fmt.Errorf("failed to copy file content for %s: %v", filePath, err)
 	}
 
-	// Close the writer to finalize the multipart form data
+	// Add additional form fields
+	_ = writer.WriteField("email", userEmail)
+	_ = writer.WriteField("ip", USER_IP)
+	_ = writer.WriteField("uploadtime", time.Now().GoString()) // Should be in "YYYY-MM-DD HH:MM:SS" format
+	_ = writer.WriteField("machineid", machineID)
+
 	err = writer.Close()
 	if err != nil {
 		return fmt.Errorf("failed to close multipart writer: %v", err)
 	}
 
-	// Create the HTTP request
+	// Create HTTP request
 	req, err := http.NewRequest("POST", uploadURL, &requestBody)
 	if err != nil {
 		return fmt.Errorf("failed to create HTTP request: %v", err)
 	}
 
-	// Set the Content-Type header to multipart/form-data with the correct boundary
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	// Send the request
+	// Send request
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -429,13 +431,13 @@ func UploadScreenshot(filePath, uploadURL string) error {
 	}
 	defer resp.Body.Close()
 
-	// Check for successful upload (200 OK status)
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("upload failed with status %s", resp.Status)
 	}
 
 	return nil
 }
+
 func isLatestApp() bool {
 	res, err := FetchConfigDetails(CONFIG_URL)
 	if err != nil {
@@ -486,7 +488,7 @@ func getAppDataDir() string {
 		// Windows: Use %APPDATA%\yourapp\data
 		appData := os.Getenv("APPDATA")
 		if appData != "" {
-			baseDir = filepath.Join(appData, "flow-app", "data")
+			baseDir = filepath.Join(appData, "flow-app", ".data")
 		} else {
 			// Fallback to local directory if APPDATA is not set
 			baseDir = filepath.Join(".", "data")
@@ -494,7 +496,7 @@ func getAppDataDir() string {
 	} else {
 		// Linux/macOS: Use ~/.yourapp/data
 		if homeDir, err := os.UserHomeDir(); err == nil {
-			baseDir = filepath.Join(homeDir, "flow-app", "data")
+			baseDir = filepath.Join(homeDir, "flow-app", ".data")
 		} else {
 			// Fallback to local directory if home dir cannot be found
 			baseDir = filepath.Join(".", "data")
@@ -507,4 +509,72 @@ func getAppDataDir() string {
 	}
 
 	return baseDir
+}
+
+func monitorSleepLinux() {
+	deleteAttendanceRecords()
+	conn, err := dbus.SystemBus()
+	if err != nil {
+		fmt.Println("Failed to connect to DBus:", err)
+		return
+	}
+
+	// Listen for system sleep signals
+	rule := "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
+	call := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
+	if call.Err != nil {
+		fmt.Println("Failed to add DBus match:", call.Err)
+		return
+	}
+
+	signals := make(chan *dbus.Signal, 10)
+	conn.Signal(signals)
+
+	for sig := range signals {
+		if !checkedIn {
+			fmt.Println("not checked in")
+			continue
+		}
+		if len(sig.Body) > 0 {
+			if !checkedIn {
+				fmt.Println("not checked in")
+				continue
+			}
+			if sleeping, ok := sig.Body[0].(bool); ok && sleeping {
+				fmt.Println("System is going to sleep!")
+
+				recordDetails := AttendanceRecord{
+					Type:         "session",
+					Status:       "checked_out",
+					Email:        userEmail,
+					MachineID:    machineID,
+					RecordTime:   time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
+					CheckinTime:  sessionStart.Format("2006-01-02T15:04:05.999999999-07:00"),
+					CheckoutTime: time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
+					WorkingTime:  workingTime.Hours(),
+					IdleTime:     dailyIdleTime.Hours(),
+					WorktimeMin:  workingTime.Minutes(),
+					Date:         time.Now().Format("2006-01-02"),
+					IP:           USER_IP,
+				}
+				writeAttendanceRecord(recordDetails)
+			} else {
+				// System is waking up
+				checkinTime = time.Now()
+				sessionStart = time.Now()
+				sessionEnd = time.Time{}
+				sessionTime = 0
+				checkoutTime = time.Time{}
+				logRecords, _ := readAttendanceRecords()
+				err := sendPostRequest(logRecords, "attendance")
+				fmt.Println("err", err)
+
+				if err != nil {
+					go deleteAttendanceRecords()
+				}
+
+				fmt.Println("System is waking up!", time.Now())
+			}
+		}
+	}
 }
