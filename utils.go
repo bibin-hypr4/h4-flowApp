@@ -566,11 +566,13 @@ func monitorSleepLinux() {
 				sessionTime = 0
 				checkoutTime = time.Time{}
 				logRecords, _ := readAttendanceRecords()
-				err := sendPostRequest(logRecords, "attendance")
-				fmt.Println("err", err)
+				if len(logRecords) > 0 {
+					err := sendPostRequest(logRecords, "attendance")
+					fmt.Println("err", err)
 
-				if err != nil {
-					go deleteAttendanceRecords()
+					if err != nil {
+						go deleteAttendanceRecords()
+					}
 				}
 
 				fmt.Println("System is waking up!", time.Now())

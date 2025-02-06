@@ -51,6 +51,7 @@ var (
 func Init(app fyne.App) {
 	go monitorSleepLinux()
 	logFile = getAppDataDir() + "/attendance.log"
+	fmt.Println("", logFile)
 	USER_IP, _ = getPublicIP()
 	id, err := GetMachineID()
 	if err != nil {
@@ -221,6 +222,15 @@ func initializeApp(a fyne.App) {
 
 	go func() {
 		for range time.Tick(processTimeInverval) {
+			logRecords, _ := readAttendanceRecords()
+			if len(logRecords) > 0 {
+				err := sendPostRequest(logRecords, "attendance")
+				fmt.Println("err", err)
+
+				if err != nil {
+					go deleteAttendanceRecords()
+				}
+			}
 			if checkedIn {
 				processList()
 			}
