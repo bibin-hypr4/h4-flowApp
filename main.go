@@ -49,7 +49,7 @@ var (
 )
 
 func Init(app fyne.App) {
-	go monitorSleepLinux()
+	go monitorSleepWindows()
 	logFile = getAppDataDir() + "/attendance.log"
 	fmt.Println("", logFile)
 	USER_IP, _ = getPublicIP()
@@ -99,7 +99,7 @@ func main() {
 	Init(app)
 
 	// Handle system signals for graceful shutdown
-	handleSignals()
+	handleShutdownWindows()
 	res, err := FetchConfigDetails(CONFIG_URL)
 	if err != nil {
 		log.Fatalf("failed to fetch config details")
@@ -124,8 +124,8 @@ func updateTrayMenu(desk desktop.App) {
 
 func initializeApp(a fyne.App) {
 	// Load the idle icon for the tray
-	idleIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/idle.ico")
-	activeIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/active.ico")
+	idleIcon, _ := fyne.LoadResourceFromPath("./idle.ico")
+	activeIcon, _ := fyne.LoadResourceFromPath("./active.ico")
 	IdleIcon = idleIcon
 	// idleIcon := fyne.NewStaticResource("idle.ico", idleImageData)
 	// activeIcon := fyne.NewStaticResource("active.ico", activeImageData)

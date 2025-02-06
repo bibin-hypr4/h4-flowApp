@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"os/user"
 	"path/filepath"
 	"regexp"
@@ -285,15 +284,24 @@ func GetMachineID() (string, error) {
 
 	return id, nil
 }
-func handleSignals() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigs
-		handleCrash(sig)
-		fmt.Println("Received signal:", sig)
-		os.Exit(0)
-	}()
+
+var kernel32 = syscall.NewLazyDLL("kernel32.dll")
+var setConsoleCtrlHandler = kernel32.NewProc("SetConsoleCtrlHandler")
+
+func handleShutdownWindows() {
+	handler := syscall.NewCallback(func(ctrlType uint32) uintptr {
+		if ctrlType == syscall.CTRL_SHUTDOWN_EVENT || ctrlType == syscall.CTRL_LOGOFF_EVENT {
+			fmt.Println("System is shutting down!")
+			handleCrash(os.Interrupt) // Call your crash handler
+			os.Exit(0)
+		}
+		return 0
+	})
+
+	ret, _, _ := setConsoleCtrlHandler.Call(handler, 1)
+	if ret == 0 {
+		fmt.Println("Failed to set shutdown handler")
+	}
 }
 
 func showAppError(message string, app fyne.App) {
