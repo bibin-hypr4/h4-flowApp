@@ -38,13 +38,13 @@ var IdleIcon fyne.Resource
 var FyneAPP fyne.App
 
 var (
-	IDLE_URL       = "http://localhost:4021/api/attendance/v4/record/idle"
-	ATTENDANCE_URL = "http://localhost:4021/api/attendance/v4/record/add"
-	PROCESS_URL    = "http://localhost:4021/api/attendance/v4/record/process"
-	GETUSER_URL    = "http://localhost:4021/api/attendance/v4/user/get"
-	ADDUSER_URL    = "http://localhost:4021/api/attendance/v4/user/register"
-	CONFIG_URL     = "http://localhost:4021/api/attendance/v4/config"
-	UPLOAD_URL     = "http://localhost:4021/api/attendance/v4/upload"
+	IDLE_URL       = "https://h4api.muxly.app/api/attendance/v4/record/idle"
+	ATTENDANCE_URL = "https://h4api.muxly.app/api/attendance/v4/record/add"
+	PROCESS_URL    = "https://h4api.muxly.app/api/attendance/v4/record/process"
+	GETUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/get"
+	ADDUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/register"
+	CONFIG_URL     = "https://h4api.muxly.app/api/attendance/v4/config"
+	UPLOAD_URL     = "https://h4api.muxly.app/api/attendance/v4/upload"
 	VERSION        = "1.3.3"
 )
 
@@ -111,7 +111,7 @@ func main() {
 		showAppError(" Please update the App to latest version", app)
 	}
 	processTimeInverval = 15 * time.Minute
-	idleThreshold = 2 * time.Minute
+	idleThreshold = 15 * time.Minute
 	initializeApp(app)
 
 }
