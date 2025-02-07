@@ -2,7 +2,7 @@
 
 [Setup]
 AppName=h4-FlowApp
-AppVersion=1.3.3
+AppVersion=1.3.4
 DefaultDirName={commonpf}\H4 Flow App
 DefaultGroupName=H4 Flow App
 OutputDir=output

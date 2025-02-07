@@ -65,14 +65,24 @@ func getUserInput() (string, string, error) {
 				dialog.ShowError(fmt.Errorf("invalid employee ID format. It must start with Capital letter followed by 4 digits"), w)
 				return
 			}
+			res, err := AddUser(machineID, email, employeeID)
 
+			if err != nil {
+				log.Println("err", err, res)
+				dialog.ShowError(fmt.Errorf("failed to verify user. Recheck the details or contact administrator"), w)
+				return
+			}
 			w.Close()
+			a.Quit()
 		},
 	}
 
 	w.SetContent(container.NewVBox(
 		form,
 	))
+	w.SetOnClosed(func() {
+		a.Quit() // Ensures the app closes when the window is manually closed
+	})
 	w.Resize(fyne.NewSize(500, 200)) // Adjust the width and height as needed
 	w.CenterOnScreen()
 	w.ShowAndRun()
