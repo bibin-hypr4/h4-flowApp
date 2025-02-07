@@ -73,26 +73,34 @@ type AttendanceRecord struct {
 }
 
 // 🔹 Write an attendance record to the log file
-func writeAttendanceRecord(record AttendanceRecord) error {
+func writeAttendanceRecord(records []AttendanceRecord) error {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 
+	// Open the file in append mode
 	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %v", err)
 	}
 	defer file.Close()
-	fmt.Println(logFile)
-	recordJSON, err := json.Marshal(record)
-	if err != nil {
-		return fmt.Errorf("failed to marshal record: %v", err)
+
+	// Iterate through the records array and write each one
+	for _, record := range records {
+		recordJSON, err := json.Marshal(record)
+		if err != nil {
+			return fmt.Errorf("failed to marshal record: %v", err)
+		}
+
+		_, err = file.WriteString(string(recordJSON) + "\n")
+		if err != nil {
+			return fmt.Errorf("failed to write to log file: %v", err)
+		}
+
+		// Print out the record (optional, for debugging)
+		fmt.Println("Written record:", record)
 	}
 
-	_, err = file.WriteString(string(recordJSON) + "\n")
-	if err != nil {
-		return fmt.Errorf("failed to write to log file: %v", err)
-	}
-	fmt.Println("done", record)
+	fmt.Println("done writing all records")
 	return nil
 }
 
