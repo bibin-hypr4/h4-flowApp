@@ -18,7 +18,7 @@ import (
 )
 
 var checkedIn, idleStatus bool
-var checkinTime, checkoutTime, sessionStart, sessionEnd time.Time
+var checkinTime, checkoutTime, sessionStart, sessionEnd, SleepTime time.Time
 var workingTime, sessionTime time.Duration
 var checkInstatus string
 var mu sync.Mutex
@@ -137,16 +137,11 @@ func initializeApp(a fyne.App) {
 	var ok bool
 	if desk, ok = a.(desktop.App); ok {
 		mItemCheckin = fyne.NewMenuItem("Check In", func() {
-			if !isNetworkAvailable() {
-				if checkedIn {
-					mItemCheckin.Label = "Check In - network error"
-
-				} else {
-					mItemCheckin.Label = "Check In - network error"
-
-				}
+			if !checkedIn && !isNetworkAvailable() {
+				mItemCheckin.Label = "Check In - network error"
 				return
 			}
+
 			checkActivity()
 			if checkedIn {
 
@@ -198,6 +193,13 @@ func initializeApp(a fyne.App) {
 				if !checkedIn {
 					continue
 				}
+				now := time.Now()
+
+				// Check if the current time is 11:59 PM
+				if now.Hour() == 23 && now.Minute() == 59 {
+					checkActivity()
+					checkActivity()
+				}
 				// sec := (int32)(workingTime.Seconds())
 				// ws := fmt.Sprintf("Work - %02d:%02d:%02d", (sec / 3600), (sec%3600)/60, (sec % 60))
 				// mWorkTime.Label = ws
@@ -222,18 +224,11 @@ func initializeApp(a fyne.App) {
 
 	go func() {
 		for range time.Tick(processTimeInverval) {
-			logRecords, _ := readAttendanceRecords()
-			if len(logRecords) > 0 {
-				err := sendPostRequest(logRecords, "attendance")
-				fmt.Println("err", err)
-
-				if err != nil {
-					go deleteAttendanceRecords()
-				}
-			}
 			if checkedIn {
 				processList()
 			}
+			processLogs()
+
 		}
 	}()
 	a.Run()

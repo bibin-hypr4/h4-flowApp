@@ -39,7 +39,7 @@ func getUserInput() (string, string, error) {
 	emailEntry.SetPlaceHolder("Enter your email")
 
 	employeeIDEntry := widget.NewEntry()
-	employeeIDEntry.SetPlaceHolder("Enter your employee ID (capital E followed by 4 digits)")
+	employeeIDEntry.SetPlaceHolder("Enter your employee ID (capital Letter followed by 4 digits)")
 
 	var email, employeeID string
 	var err error
@@ -229,15 +229,6 @@ func handleKeyPress(event keylogger.InputEvent, idleStartTime *time.Time, lastAc
 	}
 }
 
-// END - System Information Utility functions
-func loadIcon(path string) []byte {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatalf("Failed to load icon: %v", err)
-	}
-	return data
-}
-
 func isSameDay() bool {
 	if checkinTime.IsZero() {
 		checkinTime = time.Now()
@@ -331,7 +322,7 @@ func getPublicIP() (string, error) {
 	}
 	defer resp.Body.Close()
 
-	ip, err := ioutil.ReadAll(resp.Body)
+	ip, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
@@ -476,7 +467,7 @@ func ShowError(version string, app fyne.App) {
 	// Wait for dialog to be closed, don't proceed further until user clicks OK or Cancel
 	app.Run()
 	app.Quit()
-	return
+	// return
 
 }
 
@@ -542,8 +533,8 @@ func monitorSleepLinux() {
 			}
 			if sleeping, ok := sig.Body[0].(bool); ok && sleeping {
 				fmt.Println("System is going to sleep!")
-
-				recordDetails := AttendanceRecord{
+				SleepTime = time.Now()
+				recordDetails := []AttendanceRecord{{
 					Type:         "session",
 					Status:       "checked_out",
 					Email:        userEmail,
@@ -556,27 +547,52 @@ func monitorSleepLinux() {
 					WorktimeMin:  workingTime.Minutes(),
 					Date:         time.Now().Format("2006-01-02"),
 					IP:           USER_IP,
+				}}
+				err := writeAttendanceRecord(recordDetails)
+				if err == nil {
+					SleepTime = time.Time{}
 				}
-				writeAttendanceRecord(recordDetails)
 			} else {
-				// System is waking up
+				if !SleepTime.IsZero() {
+					recordDetails := []AttendanceRecord{{
+						Type:         "session",
+						Status:       "checked_out",
+						Email:        userEmail,
+						MachineID:    machineID,
+						RecordTime:   time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
+						CheckinTime:  sessionStart.Format("2006-01-02T15:04:05.999999999-07:00"),
+						CheckoutTime: SleepTime.Format("2006-01-02T15:04:05.999999999-07:00"),
+						WorkingTime:  workingTime.Hours(),
+						IdleTime:     dailyIdleTime.Hours(),
+						WorktimeMin:  workingTime.Minutes(),
+						Date:         time.Now().Format("2006-01-02"),
+						IP:           USER_IP,
+					}}
+					writeAttendanceRecord(recordDetails)
+				}
 				checkinTime = time.Now()
 				sessionStart = time.Now()
 				sessionEnd = time.Time{}
 				sessionTime = 0
 				checkoutTime = time.Time{}
-				logRecords, _ := readAttendanceRecords()
-				if len(logRecords) > 0 {
-					err := sendPostRequest(logRecords, "attendance")
-					fmt.Println("err", err)
-
-					if err != nil {
-						go deleteAttendanceRecords()
-					}
-				}
+				go processLogs()
 
 				fmt.Println("System is waking up!", time.Now())
 			}
+		}
+	}
+}
+
+func processLogs() {
+	logRecords, _ := readAttendanceRecords()
+	if len(logRecords) > 0 {
+		err := sendPostRequest(logRecords, "attendance")
+		fmt.Println("err", err)
+		fmt.Println("reading logs")
+		if err == nil {
+			deleteAttendanceRecords()
+			fmt.Println("logs sented ")
+
 		}
 	}
 }

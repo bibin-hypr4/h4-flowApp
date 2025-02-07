@@ -71,7 +71,9 @@ func recordAttendance(recordType string, status, machineID string, checkinTime, 
 
 	err := sendPostRequest(recordDetails, "attendance")
 	if err != nil {
-		go writeAttendanceRecord(recordDetails[0])
+		go writeAttendanceRecord(recordDetails)
+	} else if status == "checked_in" {
+		go processLogs()
 	}
 
 }
@@ -106,7 +108,7 @@ func handleCrash(r interface{}) {
 		}}
 		err := sendPostRequest(data, "attendance")
 		if err != nil {
-			writeAttendanceRecord(data[0])
+			writeAttendanceRecord(data)
 
 		}
 	}
