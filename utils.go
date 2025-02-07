@@ -25,7 +25,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/MarinX/keylogger"
 	"github.com/denisbrodbeck/machineid"
-	"github.com/godbus/dbus/v5"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/host"
 )
@@ -508,87 +507,6 @@ func getAppDataDir() string {
 	}
 
 	return baseDir
-}
-
-func monitorSleepLinux() {
-	deleteAttendanceRecords()
-	conn, err := dbus.SystemBus()
-	if err != nil {
-		fmt.Println("Failed to connect to DBus:", err)
-		return
-	}
-
-	// Listen for system sleep signals
-	rule := "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
-	call := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
-	if call.Err != nil {
-		fmt.Println("Failed to add DBus match:", call.Err)
-		return
-	}
-
-	signals := make(chan *dbus.Signal, 10)
-	conn.Signal(signals)
-
-	for sig := range signals {
-		if !checkedIn {
-			fmt.Println("not checked in")
-			continue
-		}
-		if len(sig.Body) > 0 {
-			if !checkedIn {
-				fmt.Println("not checked in")
-				continue
-			}
-			if sleeping, ok := sig.Body[0].(bool); ok && sleeping {
-				fmt.Println("System is going to sleep!")
-				SleepTime = time.Now()
-				recordDetails := []AttendanceRecord{{
-					Type:         "session",
-					Status:       "checked_out",
-					Email:        userEmail,
-					MachineID:    machineID,
-					RecordTime:   time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
-					CheckinTime:  sessionStart.Format("2006-01-02T15:04:05.999999999-07:00"),
-					CheckoutTime: time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
-					WorkingTime:  workingTime.Hours(),
-					IdleTime:     dailyIdleTime.Hours(),
-					WorktimeMin:  workingTime.Minutes(),
-					Date:         time.Now().Format("2006-01-02"),
-					IP:           USER_IP,
-				}}
-				err := writeAttendanceRecord(recordDetails)
-				if err == nil {
-					SleepTime = time.Time{}
-				}
-			} else {
-				if !SleepTime.IsZero() {
-					recordDetails := []AttendanceRecord{{
-						Type:         "session",
-						Status:       "checked_out",
-						Email:        userEmail,
-						MachineID:    machineID,
-						RecordTime:   time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
-						CheckinTime:  sessionStart.Format("2006-01-02T15:04:05.999999999-07:00"),
-						CheckoutTime: SleepTime.Format("2006-01-02T15:04:05.999999999-07:00"),
-						WorkingTime:  workingTime.Hours(),
-						IdleTime:     dailyIdleTime.Hours(),
-						WorktimeMin:  workingTime.Minutes(),
-						Date:         time.Now().Format("2006-01-02"),
-						IP:           USER_IP,
-					}}
-					writeAttendanceRecord(recordDetails)
-				}
-				checkinTime = time.Now()
-				sessionStart = time.Now()
-				sessionEnd = time.Time{}
-				sessionTime = 0
-				checkoutTime = time.Time{}
-				go processLogs()
-
-				fmt.Println("System is waking up!", time.Now())
-			}
-		}
-	}
 }
 
 func processLogs() {

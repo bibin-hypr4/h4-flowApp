@@ -63,7 +63,7 @@ func windowProc(hwnd w32.HWND, msg uint32, wparam, lparam uintptr) uintptr {
 				return 1
 			}
 
-			recordDetails := AttendanceRecord{
+			recordDetails := []AttendanceRecord{{
 				Type:         "session",
 				Status:       "checked_out",
 				Email:        userEmail,
@@ -76,7 +76,7 @@ func windowProc(hwnd w32.HWND, msg uint32, wparam, lparam uintptr) uintptr {
 				WorktimeMin:  workingTime.Minutes(),
 				Date:         time.Now().Format("2006-01-02"),
 				IP:           USER_IP,
-			}
+			}}
 			writeAttendanceRecord(recordDetails)
 		} else if wparam == PBT_APMRESUMESUSPEND {
 			fmt.Println("System is waking up!", time.Now())
@@ -87,15 +87,7 @@ func windowProc(hwnd w32.HWND, msg uint32, wparam, lparam uintptr) uintptr {
 			sessionTime = 0
 			checkoutTime = time.Time{}
 
-			logRecords, _ := readAttendanceRecords()
-			if len(logRecords) > 0 {
-				err := sendPostRequest(logRecords, "attendance")
-				fmt.Println("err", err)
-
-				if err != nil {
-					go deleteAttendanceRecords()
-				}
-			}
+			go processLogs()
 		}
 		return 1
 	default:
