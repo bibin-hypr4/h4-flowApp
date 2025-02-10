@@ -10,7 +10,6 @@ require (
 	github.com/go-vgo/robotgo v0.110.5
 	github.com/godbus/dbus/v5 v5.1.0
 	github.com/kbinani/screenshot v0.0.0-20240820160931-a8a2c5d0e191
-	github.com/lxn/win v0.0.0-20210218163916-a377121e959e
 	github.com/shirou/gopsutil v3.21.11+incompatible
 )
 
@@ -35,6 +34,7 @@ require (
 	github.com/jezek/xgb v1.1.1 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
 	github.com/lufia/plan9stats v0.0.0-20240909124753-873cd0166683 // indirect
+	github.com/lxn/win v0.0.0-20210218163916-a377121e959e // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.4.0 // indirect
 	github.com/otiai10/gosseract v2.2.1+incompatible // indirect
 	github.com/otiai10/mint v1.6.3 // indirect

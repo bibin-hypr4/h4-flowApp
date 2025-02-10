@@ -1,6 +1,16 @@
 package main
 
+/*
+#cgo LDFLAGS: -framework IOKit
+#include <IOKit/pwr_mgt/IOPMLib.h>
+#include <IOKit/IOMessage.h>
+#include <CoreFoundation/CoreFoundation.h>
+
+void powerCallback(void *refcon, io_service_t service, natural_t messageType, void *messageArgument);
+*/
+
 import (
+	"C"
 	"bytes"
 	"fmt"
 	"io"
@@ -18,6 +28,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -26,7 +37,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/MarinX/keylogger"
 	"github.com/denisbrodbeck/machineid"
-	"github.com/godbus/dbus/v5"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/host"
 )
@@ -502,85 +512,65 @@ func getAppDataDir() string {
 	return baseDir
 }
 
-func monitorSleepLinux() {
-	deleteAttendanceRecords()
-	conn, err := dbus.SystemBus()
-	if err != nil {
-		fmt.Println("Failed to connect to DBus:", err)
-		return
-	}
-
-	// Listen for system sleep signals
-	rule := "type='signal',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
-	call := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule)
-	if call.Err != nil {
-		fmt.Println("Failed to add DBus match:", call.Err)
-		return
-	}
-
-	signals := make(chan *dbus.Signal, 10)
-	conn.Signal(signals)
-
-	for sig := range signals {
+func powerCallback(refcon unsafe.Pointer, service C.io_service_t, messageType C.natural_t, messageArgument unsafe.Pointer) {
+	switch messageType {
+	case C.kIOMessageSystemWillSleep:
 		if !checkedIn {
-			fmt.Println("not checked in")
-			continue
+			fmt.Println("User is not checked in. No action needed.")
+			return
 		}
-		if len(sig.Body) > 0 {
-			if !checkedIn {
-				fmt.Println("not checked in")
-				continue
-			}
-			if sleeping, ok := sig.Body[0].(bool); ok && sleeping {
-				fmt.Println("System is going to sleep!")
-				SleepTime = time.Now()
-				recordDetails := []AttendanceRecord{{
-					Type:         "session",
-					Status:       "checked_out",
-					Email:        userEmail,
-					MachineID:    machineID,
-					RecordTime:   time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
-					CheckinTime:  sessionStart.Format("2006-01-02T15:04:05.999999999-07:00"),
-					CheckoutTime: time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
-					WorkingTime:  workingTime.Hours(),
-					IdleTime:     dailyIdleTime.Hours(),
-					WorktimeMin:  workingTime.Minutes(),
-					Date:         time.Now().Format("2006-01-02"),
-					IP:           USER_IP,
-				}}
-				err := writeAttendanceRecord(recordDetails)
-				if err == nil {
-					SleepTime = time.Time{}
-				}
-			} else {
-				if !SleepTime.IsZero() {
-					recordDetails := []AttendanceRecord{{
-						Type:         "session",
-						Status:       "checked_out",
-						Email:        userEmail,
-						MachineID:    machineID,
-						RecordTime:   time.Now().Format("2006-01-02T15:04:05.999999999-07:00"),
-						CheckinTime:  sessionStart.Format("2006-01-02T15:04:05.999999999-07:00"),
-						CheckoutTime: SleepTime.Format("2006-01-02T15:04:05.999999999-07:00"),
-						WorkingTime:  workingTime.Hours(),
-						IdleTime:     dailyIdleTime.Hours(),
-						WorktimeMin:  workingTime.Minutes(),
-						Date:         time.Now().Format("2006-01-02"),
-						IP:           USER_IP,
-					}}
-					writeAttendanceRecord(recordDetails)
-				}
-				checkinTime = time.Now()
-				sessionStart = time.Now()
-				sessionEnd = time.Time{}
-				sessionTime = 0
-				checkoutTime = time.Time{}
-				go processLogs()
+		fmt.Println("⚠️ System is going to sleep!")
+		SleepTime = time.Now()
 
-				fmt.Println("System is waking up!", time.Now())
-			}
+		// Save check-out record
+		recordDetails := []AttendanceRecord{{
+			Type:         "session",
+			Status:       "checked_out",
+			Email:        userEmail,
+			MachineID:    machineID,
+			RecordTime:   time.Now().Format(time.RFC3339),
+			CheckinTime:  sessionStart.Format(time.RFC3339),
+			CheckoutTime: time.Now().Format(time.RFC3339),
+			WorkingTime:  workingTime.Hours(),
+			IdleTime:     dailyIdleTime.Hours(),
+			WorktimeMin:  workingTime.Minutes(),
+			Date:         time.Now().Format("2006-01-02"),
+			IP:           USER_IP,
+		}}
+		if err := writeAttendanceRecord(recordDetails); err == nil {
+			SleepTime = time.Time{} // Reset sleep time
 		}
+
+	case C.kIOMessageSystemHasPoweredOn:
+		fmt.Println("✅ System is waking up!", time.Now())
+
+		// Save session start details
+		checkinTime = time.Now()
+		sessionStart = time.Now()
+		sessionEnd = time.Time{}
+		workingTime = 0
+		dailyIdleTime = 0
+		checkoutTime = time.Time{}
+
+		// Process logs in a separate goroutine
+		go processLogs()
+
+		fmt.Println("System wake-up actions completed.")
 	}
+}
+
+// Function to monitor sleep/wake events on macOS
+func monitorSleepMac() {
+	var notifier C.io_object_t
+	var rootPort C.io_connect_t = C.IORegisterForSystemPower(nil, &notifier, (C.IOServiceInterestCallback)(unsafe.Pointer(C.powerCallback)), nil)
+
+	if rootPort == 0 {
+		fmt.Println("❌ Failed to register for system power notifications")
+		return
+	}
+
+	fmt.Println("🟢 Monitoring macOS sleep/wake events...")
+	C.CFRunLoopRun() // Keeps the function running to listen for events
 }
 
 func processLogs() {

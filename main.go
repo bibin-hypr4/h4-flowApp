@@ -49,7 +49,7 @@ var (
 )
 
 func Init(app fyne.App) {
-	go monitorSleepLinux()
+	go monitorSleepMac()
 	logFile = getAppDataDir() + "/attendance.log"
 	fmt.Println("", logFile)
 	USER_IP, _ = getPublicIP()
