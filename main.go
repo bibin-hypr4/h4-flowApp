@@ -45,13 +45,12 @@ var (
 	ADDUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/register"
 	CONFIG_URL     = "https://h4api.muxly.app/api/attendance/v4/config"
 	UPLOAD_URL     = "https://h4api.muxly.app/api/attendance/v4/upload"
-	VERSION        = "1.3.3"
+	VERSION        = "1.3.4"
 )
 
-func Init(app fyne.App) {
+func Init() {
 	go monitorSleepLinux()
 	logFile = getAppDataDir() + "/attendance.log"
-	fmt.Println("", logFile)
 	USER_IP, _ = getPublicIP()
 	id, err := GetMachineID()
 	if err != nil {
@@ -62,19 +61,12 @@ func Init(app fyne.App) {
 	userDetails, err := getUserDetails(machineID)
 	if err != nil {
 		log.Println("err", err)
-		email, employeId, err := getUserInput()
+		email, _, err := getUserInput()
 		if err != nil {
 			log.Println("err", err)
-
 			log.Fatalf("Error getting user input: %v", err)
-			return
 		}
-		res, err := AddUser(machineID, email, employeId)
 
-		if err != nil {
-			log.Println("err", err, res)
-			showAppError("Failed to verify User.Please contact Administrator", app)
-		}
 		userEmail = email
 	} else {
 		userEmail = userDetails["email"].(string)
@@ -83,8 +75,6 @@ func Init(app fyne.App) {
 
 func main() {
 
-	app := app.NewWithID("h4-Flow App")
-	FyneAPP = app
 	fmt.Println("started")
 	defer func() {
 		if r := recover(); r != nil {
@@ -96,7 +86,7 @@ func main() {
 		}
 	}()
 
-	Init(app)
+	Init()
 
 	// Handle system signals for graceful shutdown
 	handleSignals()
@@ -104,10 +94,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to fetch config details")
 	}
+	app := app.NewWithID("h4-Flow App")
+	FyneAPP = app
 	version, exist := res["version"].(string)
 	if !exist {
 		version = VERSION
 	}
+
 	if version != VERSION {
 		showAppError(" Please update the App to latest version", app)
 	}

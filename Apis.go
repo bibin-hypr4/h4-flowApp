@@ -78,6 +78,7 @@ func recordAttendance(recordType string, status, machineID string, checkinTime, 
 
 }
 func handleCrash(r interface{}) {
+	fmt.Println("Crash detected", r)
 	if checkedIn {
 		data := []AttendanceRecord{{
 			Type:         "session",
@@ -294,16 +295,13 @@ func AddUser(machineID string, email string, employeeId string) (map[string]inte
 		fmt.Println("error unmarshalling response body", err)
 
 	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		fmt.Println("error unmarshalling response body", err, resp.StatusCode)
-		return nil, fmt.Errorf("received non-OK response: %s", body)
-	}
-
 	var responseMap map[string]interface{}
 	err = json.Unmarshal(body, &responseMap)
 	if err != nil {
 		fmt.Println("error unmarshalling response body")
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return responseMap, fmt.Errorf("received non-OK response: %s", responseMap)
 	}
 
 	return responseMap, nil
