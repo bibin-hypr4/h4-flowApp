@@ -1,14 +1,5 @@
 package main
 
-/*
-#cgo LDFLAGS: -framework IOKit
-#include <IOKit/pwr_mgt/IOPMLib.h>
-#include <IOKit/IOMessage.h>
-#include <CoreFoundation/CoreFoundation.h>
-
-void powerCallback(void *refcon, io_service_t service, natural_t messageType, void *messageArgument);
-*/
-
 import (
 	"C"
 	"bytes"
@@ -28,7 +19,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -260,28 +250,11 @@ func isSameDay() bool {
 func GetMachineID() (string, error) {
 	var id string
 	var err error
-
-	switch runtime.GOOS {
-	case "linux":
-
-		id, err = machineid.ID()
-		if err != nil {
-			return "", fmt.Errorf("error getting machine ID on Linux: %v", err)
-		}
-	case "windows":
-		// For Windows, use the machineid package
-		id, err = machineid.ID()
-		if err != nil {
-			return "", fmt.Errorf("error getting machine ID on Windows: %v", err)
-		}
-	case "darwin":
-		// For macOS, use the machineid package
-		id, err = machineid.ID()
-		if err != nil {
-			return "", fmt.Errorf("error getting machine ID on macOS: %v", err)
-		}
-	default:
-		return "", fmt.Errorf("unsupported OS: %v", runtime.GOOS)
+	id, err = machineid.ID()
+	println(runtime.GOOS, "--asda--", id)
+	id, err = machineid.ID()
+	if err != nil {
+		return "", fmt.Errorf("error getting machine ID on : %v", runtime.GOOS)
 	}
 
 	return id, nil
@@ -510,67 +483,6 @@ func getAppDataDir() string {
 	}
 
 	return baseDir
-}
-
-func powerCallback(refcon unsafe.Pointer, service C.io_service_t, messageType C.natural_t, messageArgument unsafe.Pointer) {
-	switch messageType {
-	case C.kIOMessageSystemWillSleep:
-		if !checkedIn {
-			fmt.Println("User is not checked in. No action needed.")
-			return
-		}
-		fmt.Println("⚠️ System is going to sleep!")
-		SleepTime = time.Now()
-
-		// Save check-out record
-		recordDetails := []AttendanceRecord{{
-			Type:         "session",
-			Status:       "checked_out",
-			Email:        userEmail,
-			MachineID:    machineID,
-			RecordTime:   time.Now().Format(time.RFC3339),
-			CheckinTime:  sessionStart.Format(time.RFC3339),
-			CheckoutTime: time.Now().Format(time.RFC3339),
-			WorkingTime:  workingTime.Hours(),
-			IdleTime:     dailyIdleTime.Hours(),
-			WorktimeMin:  workingTime.Minutes(),
-			Date:         time.Now().Format("2006-01-02"),
-			IP:           USER_IP,
-		}}
-		if err := writeAttendanceRecord(recordDetails); err == nil {
-			SleepTime = time.Time{} // Reset sleep time
-		}
-
-	case C.kIOMessageSystemHasPoweredOn:
-		fmt.Println("✅ System is waking up!", time.Now())
-
-		// Save session start details
-		checkinTime = time.Now()
-		sessionStart = time.Now()
-		sessionEnd = time.Time{}
-		workingTime = 0
-		dailyIdleTime = 0
-		checkoutTime = time.Time{}
-
-		// Process logs in a separate goroutine
-		go processLogs()
-
-		fmt.Println("System wake-up actions completed.")
-	}
-}
-
-// Function to monitor sleep/wake events on macOS
-func monitorSleepMac() {
-	var notifier C.io_object_t
-	var rootPort C.io_connect_t = C.IORegisterForSystemPower(nil, &notifier, (C.IOServiceInterestCallback)(unsafe.Pointer(C.powerCallback)), nil)
-
-	if rootPort == 0 {
-		fmt.Println("❌ Failed to register for system power notifications")
-		return
-	}
-
-	fmt.Println("🟢 Monitoring macOS sleep/wake events...")
-	C.CFRunLoopRun() // Keeps the function running to listen for events
 }
 
 func processLogs() {

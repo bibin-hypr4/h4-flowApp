@@ -37,6 +37,11 @@ var USER_IP string
 var IdleIcon fyne.Resource
 var FyneAPP fyne.App
 
+//go:embed images/idle.ico
+var idleIconData []byte
+
+//go:embed images/active.ico
+var activeIconData []byte
 var (
 	IDLE_URL       = "https://h4api.muxly.app/api/attendance/v4/record/idle"
 	ATTENDANCE_URL = "https://h4api.muxly.app/api/attendance/v4/record/add"
@@ -45,11 +50,11 @@ var (
 	ADDUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/register"
 	CONFIG_URL     = "https://h4api.muxly.app/api/attendance/v4/config"
 	UPLOAD_URL     = "https://h4api.muxly.app/api/attendance/v4/upload"
-	VERSION        = "1.3.3"
+	VERSION        = "1.3.4"
 )
 
 func Init(app fyne.App) {
-	go monitorSleepMac()
+
 	logFile = getAppDataDir() + "/attendance.log"
 	fmt.Println("", logFile)
 	USER_IP, _ = getPublicIP()
@@ -124,11 +129,10 @@ func updateTrayMenu(desk desktop.App) {
 
 func initializeApp(a fyne.App) {
 	// Load the idle icon for the tray
-	idleIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/idle.ico")
-	activeIcon, _ := fyne.LoadResourceFromPath("/usr/share/flow-app/img/active.ico")
-	IdleIcon = idleIcon
-	// idleIcon := fyne.NewStaticResource("idle.ico", idleImageData)
-	// activeIcon := fyne.NewStaticResource("active.ico", activeImageData)
+	// idleIcon := fyne.NewStaticResource("idle.ico", idleIconData)
+	// activeIcon := fyne.NewStaticResource("active.ico", activeIconData)
+	idleIcon, _ := fyne.LoadResourceFromPath("./images/idle.ico")
+	activeIcon, _ := fyne.LoadResourceFromPath("./images/active.ico")
 
 	// Set the initial status text for the check-in
 	userName := currentUsername()
