@@ -12,8 +12,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/driver/desktop"
-	"github.com/go-vgo/robotgo"
 	"github.com/kbinani/screenshot"
+	hook "github.com/robotn/gohook"
 	"github.com/shirou/gopsutil/process"
 )
 
@@ -45,7 +45,7 @@ var (
 	ADDUSER_URL    = "https://h4api.muxly.app/api/attendance/v4/user/register"
 	CONFIG_URL     = "https://h4api.muxly.app/api/attendance/v4/config"
 	UPLOAD_URL     = "https://h4api.muxly.app/api/attendance/v4/upload"
-	VERSION        = "1.3.3"
+	VERSION        = "1.3.6"
 )
 
 func Init(app fyne.App) {
@@ -203,9 +203,6 @@ func initializeApp(a fyne.App) {
 				// sec := (int32)(workingTime.Seconds())
 				// ws := fmt.Sprintf("Work - %02d:%02d:%02d", (sec / 3600), (sec%3600)/60, (sec % 60))
 				// mWorkTime.Label = ws
-				isec := (int32)(dailyIdleTime.Seconds())
-				idles := fmt.Sprintf("Idle - %02d:%02d:%02d", (isec / 3600), (isec%3600)/60, (isec % 60))
-				mIdle.Label = idles
 
 				if !idleStatus {
 					sec := (int32)(sessionTime.Seconds())
@@ -238,8 +235,11 @@ func checkActivity() {
 	if !checkedIn {
 
 		if !isSameDay() {
+			processTimes = make(map[int]time.Duration, 0)
+			processLastSeen = make(map[int]time.Time, 0)
 			dailyIdleTime = 0
 			workingTime = 0
+			sessionTime = 0
 			if !isLatestApp() {
 				showAppError("This version of app is outdated", FyneAPP)
 			}
@@ -251,9 +251,9 @@ func checkActivity() {
 		mItemCheckin.Label = "Checkout"
 		mItemCheckin.Checked = true
 		updateCheckinTime()
-		recordAttendance("attendance", "checked_in", machineID, checkinTime, checkoutTime, workingTime, dailyIdleTime)
+		recordAttendance("attendance", "checked_in", machineID, checkinTime, time.Time{}, workingTime, dailyIdleTime)
 		sessionStart = time.Now()
-		recordAttendance("session", "checked_in", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
+		recordAttendance("session", "checked_in", machineID, sessionStart, time.Time{}, sessionTime, dailyIdleTime)
 
 		sessionEnd = time.Time{}
 
@@ -262,74 +262,79 @@ func checkActivity() {
 		mItemCheckin.Label = "Check In"
 		mItemCheckin.Checked = false
 		updateCheckoutTime()
-		recordAttendance("attendance", "checked_out", machineID, checkinTime, checkoutTime, workingTime, dailyIdleTime)
+		recordAttendance("attendance", "checked_out", machineID, checkinTime, time.Now(), workingTime, dailyIdleTime)
 		recordAttendance("session", "checked_out", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
 		sessionStart = time.Time{}
 		sessionEnd = time.Time{}
 	}
 }
 
+var idleStartTime time.Time
+var lastActive time.Time
+
 func getIdleTime() {
-	lastActive := time.Now()
-	lastx, lasty := robotgo.Location()
+	lastActive = time.Now()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	var idleStartTime time.Time
+	// Set up a global event listener for keyboard and mouse activity
+	go func() {
+		fmt.Println("Starting event listener...")
+		events := hook.Start()
+		for e := range events {
+			if e.Kind == hook.KeyDown || e.Kind == hook.MouseMove {
+				// handleUserActivity()
+				if idleStatus {
+					fmt.Println("User returned. Resetting idle time.")
+					if !idleStartTime.IsZero() {
+						// idleEnd := time.Now()
+						if idleStatus && time.Since(idleStartTime) >= idleThreshold {
+							sessionStart = time.Now()
+							recordAttendance("session", "checked_in", machineID, sessionStart, time.Time{}, sessionTime, dailyIdleTime)
 
-	for {
-		if !checkedIn {
-			fmt.Println("CheckedIn is false, stopping tracking.")
-			return
-		}
+							idleStatus = false
+							dailyIdleTime = 0
+							dailyIdleTime += time.Since(idleStartTime) - idleThreshold
+							isec := (int32)(dailyIdleTime.Seconds())
+							idles := fmt.Sprintf("Idle - %02d:%02d:%02d", (isec / 3600), (isec%3600)/60, (isec % 60))
+							idleStartTime = time.Time{}
 
-		// Track mouse events
-		x, y := robotgo.Location()
-		if x != lastx || y != lasty {
-			// Mouse moved, reset idle time
-			if !idleStartTime.IsZero() {
-				idleStartTime = time.Time{}
-				if idleStatus && time.Since(idleStartTime) >= idleThreshold {
-					sessionStart = time.Now()
-					recordAttendance("session", "checked_in", machineID, sessionStart, time.Now(), sessionTime, dailyIdleTime)
+							mIdle.Label = idles
+						}
 
-					idleStatus = false
+					}
+					lastActive = time.Now()
+				} else {
+					lastActive = time.Now()
 				}
 			}
-
-			lastActive = time.Now()
-			lastx, lasty = x, y
 		}
+	}()
 
-		// Check if idle time should be recorded
-		// Track idle periods
-		if time.Since(lastActive) > idleThreshold && idleStartTime.IsZero() {
-			sessionEnd = time.Now()
-			idleStatus = true
-			// fmt.Println("idle started", sessionStart, sessionEnd)
-			// // recordSession()
-			recordAttendance("session", "checked_out", machineID, sessionStart, sessionEnd, sessionTime, dailyIdleTime)
-			sessionStart = time.Time{}
-			sessionEnd = time.Time{}
-			idleStartTime = lastActive
-		} else if time.Since(lastActive) <= idleThreshold && !idleStartTime.IsZero() {
-			if sessionStart.IsZero() {
-				sessionStart = time.Now()
-				recordAttendance("session", "checked_in", machineID, sessionStart, time.Time{}, sessionTime, dailyIdleTime)
+	// Periodic check for idle state
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 
+	for range ticker.C {
+		if !checkedIn {
+			if idleStatus {
+				idleStatus = false
 			}
-			idleEndTime := time.Now()
-			dailyIdleTime += time.Since(idleStartTime) - idleThreshold
-			// recordIdleTime(idleStartTime, idleEndTime)
-			sessionTime = 0
-			// updateCheckinTime()
-			idleStartTime = time.Time{}
-			fmt.Println("Mouse moved, idle ended at: ", idleEndTime, dailyIdleTime)
-
+			continue
 		}
-
+		if time.Since(lastActive) > idleThreshold {
+			if !idleStatus {
+				fmt.Println("User is idle!")
+				idleStartTime = time.Now()
+				idleStatus = true
+				sessionEnd = time.Now()
+				recordAttendance("session", "checked_out", machineID, sessionStart, sessionEnd, sessionTime, dailyIdleTime)
+				sessionStart = time.Time{}
+				sessionEnd = time.Time{}
+				idleStartTime = lastActive
+			}
+		}
 	}
 }
+
 func processList() interface{} {
 	// List only current user processes
 	processes, err := process.Processes()

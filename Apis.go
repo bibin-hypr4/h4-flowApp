@@ -68,12 +68,21 @@ func recordAttendance(recordType string, status, machineID string, checkinTime, 
 		Date:         time.Now().Format("2006-01-02"),
 		IP:           USER_IP,
 	}}
+	if status == "checked_in" {
+		go func() {
+			err := sendPostRequest(recordDetails, "attendance")
+			if err != nil {
+				writeAttendanceRecord(recordDetails)
+			} else {
+				processLogs()
 
-	err := sendPostRequest(recordDetails, "attendance")
-	if err != nil {
-		go writeAttendanceRecord(recordDetails)
-	} else if status == "checked_in" {
-		go processLogs()
+			}
+		}()
+	} else {
+		err := sendPostRequest(recordDetails, "attendance")
+		if err != nil {
+			writeAttendanceRecord(recordDetails)
+		}
 	}
 
 }
